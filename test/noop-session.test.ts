@@ -8,7 +8,7 @@
 
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { type TestSession, createTestSession } from "./harness.js";
+import { type TestSession, createTestSession } from "./harness.ts";
 
 describe("no-op headless session", () => {
 	let ts: TestSession;

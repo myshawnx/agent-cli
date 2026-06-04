@@ -26,10 +26,15 @@ npm install --ignore-scripts
 npm run build          # esbuild -> dist/cli.js
 npm test               # vitest (offline, faux provider, zero LLM calls)
 
-# Commands (C0 — placeholder; real behaviour lands C1→)
+# Commands (C1 — v0.1 readonly shell)
 agent --version
 agent --help
+agent init             # detect profile and scaffold .agent/
+agent -p "这个项目是做什么的?"     # readonly print-mode Q&A
+agent ask -p "入口文件在哪?"       # explicit readonly Q&A subcommand
 ```
+
+v0.1 is **readonly**: it exposes only `read` / `grep` / `find` / `ls` to the pi session. It does not write files or run commands; the policy layer for write/execute modes lands in C2.
 
 ## Architecture
 

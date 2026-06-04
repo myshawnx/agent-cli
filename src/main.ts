@@ -5,10 +5,10 @@
  *     for subcommands. No agent behavior yet — that starts in C1.
  */
 
-import { createProgram } from "./cli/args.js";
+import { createProgram } from "./cli/args.ts";
 
 const program = createProgram();
 
-// commander .parse() handles --version, --help, and "no subcommand => help" itself.
-// Subcommands that aren't registered yet throw via their notReady action.
-program.parse();
+// parseAsync: C1's actions are async (they build pi sessions and await turns).
+// commander still handles --version / --help; the default action drives read-only Q&A.
+await program.parseAsync();

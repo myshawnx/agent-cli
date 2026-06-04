@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Compile } from "typebox/compile";
-import { type PolicyConfig, PolicyConfigSchema, type ProjectProfile, ProjectProfileSchema } from "./schema.js";
+import { type PolicyConfig, PolicyConfigSchema, type ProjectProfile, ProjectProfileSchema } from "./schema.ts";
 
 const policyValidator = Compile(PolicyConfigSchema);
 const profileValidator = Compile(ProjectProfileSchema);

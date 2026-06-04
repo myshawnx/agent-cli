@@ -1,0 +1,17 @@
+{
+	"name": "hono-api-fixture",
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"test": "vitest --run",
+		"lint": "biome check .",
+		"build": "tsc --noEmit"
+	},
+	"dependencies": {
+		"hono": "^4.0.0"
+	},
+	"devDependencies": {
+		"typescript": "^5.6.0",
+		"vitest": "^2.1.0"
+	}
+}
