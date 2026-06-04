@@ -1,0 +1,35 @@
+{
+	"name": "agent-cli",
+	"version": "0.1.0",
+	"description": "A local-first CLI coding assistant built on the pi agent harness (used as a library), adding a declarative safety/approval policy layer, MCP tool integration, an eval/benchmark harness, and cross-session project memory.",
+	"type": "module",
+	"bin": {
+		"agent": "dist/cli.js"
+	},
+	"files": ["dist", "README.md"],
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"build": "node scripts/build.mjs",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "vitest --run",
+		"test:watch": "vitest"
+	},
+	"dependencies": {
+		"@earendil-works/pi-ai": "^0.78.0",
+		"@earendil-works/pi-coding-agent": "^0.78.0",
+		"@earendil-works/pi-tui": "^0.78.0",
+		"commander": "^12.1.0",
+		"typebox": "^1.1.38"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@types/node": "^22.0.0",
+		"esbuild": "^0.24.0",
+		"typescript": "^5.6.0",
+		"vitest": "^2.1.0"
+	}
+}
