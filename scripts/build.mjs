@@ -8,7 +8,7 @@ await build({
 	outfile: "dist/cli.js",
 	platform: "node",
 	format: "esm",
-	target: "node20",
+	target: "node22",
 	bundle: true,
 	sourcemap: true,
 	banner: { js: "#!/usr/bin/env node" },
