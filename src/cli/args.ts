@@ -1,17 +1,20 @@
 /**
- * CLI definition — commander wiring for C1.
+ * CLI definition — commander wiring for C2.
  *
  * Top-level `agent "<task>"` (and `-p` for print mode) is the primary entrypoint;
- * `init` and `ask` are explicit subcommands. `review/diff/undo/mcp/eval` remain
- * placeholders until their cycles (C2–C5). Profile/memory injection and the
- * readonly tool allowlist live below this layer — args only parses and dispatches.
+ * `init`, `ask`, and `review` are explicit subcommands. C2 wires approval modes
+ * into the runtime policy gateway: readonly | suggest | workspace-write | auto.
  */
 
 import { Command } from "commander";
+import type { ApprovalMode } from "../policy/types.ts";
 import { VERSION } from "../version.ts";
 import { runAsk } from "./commands/ask.ts";
 import { runInit } from "./commands/init.ts";
+import { runReview } from "./commands/review.ts";
 import { readPipedStdin } from "./stdin.ts";
+
+const APPROVAL_MODES: ApprovalMode[] = ["readonly", "suggest", "workspace-write", "auto"];
 
 interface RunOpts {
 	cwd: string;
@@ -20,24 +23,29 @@ interface RunOpts {
 	mode: string;
 }
 
-const V01_NOTICE =
-	"v0.1 (C1) is READ-ONLY: it understands and answers questions about the project but\n" +
-	"never writes files or runs commands. The safety/approval policy layer lands in v0.2.";
+interface ReviewOpts {
+	cwd: string;
+	mode: string;
+}
+
+const V02_NOTICE =
+	"v0.2 (C2) adds a policy gateway: bash/path checks are a string-level speed bump, not an OS sandbox.\n" +
+	"For a true boundary, enable sandbox support when C6 hardening lands.";
+
+function parseApprovalMode(mode: string): ApprovalMode {
+	if ((APPROVAL_MODES as string[]).includes(mode)) {
+		return mode as ApprovalMode;
+	}
+	throw new Error(`invalid --mode "${mode}" (expected ${APPROVAL_MODES.join(" | ")})`);
+}
 
 /** Shared run options for the default action and the `ask` subcommand. */
 function addRunOptions(cmd: Command): Command {
 	return cmd
 		.option("--cwd <path>", "working directory", process.cwd())
-		.option("-p, --print", "non-interactive print mode (stdout only)")
+		.option("-p, --print", "non-interactive print mode (stdout only; confirm decisions block conservatively)")
 		.option("--model <id>", "model identifier (default: anthropic claude-sonnet-4-6)")
-		.option("--mode <mode>", "approval mode (v0.1: readonly only)", "readonly");
-}
-
-/** Warn (once) if a non-readonly mode was requested — C1 only does readonly. */
-function noticeIfUnsupportedMode(mode: string): void {
-	if (mode !== "readonly") {
-		process.stderr.write(`note: --mode "${mode}" is not supported in v0.1; running read-only.\n`);
-	}
+		.option("--mode <mode>", "approval mode: readonly | suggest | workspace-write | auto", "suggest");
 }
 
 /** Combine typed task words with any piped stdin into a single prompt. */
@@ -50,6 +58,16 @@ async function composePrompt(parts: string[]): Promise<string> {
 	return typed || piped || "";
 }
 
+async function runWithCliError(fn: () => Promise<number>): Promise<void> {
+	try {
+		process.exitCode = await fn();
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		process.stderr.write(`${message}\n`);
+		process.exitCode = 1;
+	}
+}
+
 function createProgram(): Command {
 	const program = new Command();
 
@@ -57,8 +75,8 @@ function createProgram(): Command {
 		.name("agent")
 		.description("A local-first CLI coding assistant built on the pi agent harness (SDK, no fork).")
 		.version(VERSION, "--version", "output the version number")
-		.argument("[task...]", "natural-language task for read-only Q&A")
-		.addHelpText("after", `\n${V01_NOTICE}\n`);
+		.argument("[task...]", "natural-language task")
+		.addHelpText("after", `\n${V02_NOTICE}\n`);
 	addRunOptions(program);
 
 	program.action(async (task: string[], opts: RunOpts) => {
@@ -67,9 +85,15 @@ function createProgram(): Command {
 			program.help();
 			return;
 		}
-		noticeIfUnsupportedMode(opts.mode);
-		const code = await runAsk({ cwd: opts.cwd, prompt, printMode: Boolean(opts.print), modelId: opts.model });
-		process.exitCode = code;
+		await runWithCliError(() =>
+			runAsk({
+				cwd: opts.cwd,
+				prompt,
+				printMode: Boolean(opts.print),
+				modelId: opts.model,
+				mode: parseApprovalMode(opts.mode),
+			}),
+		);
 	});
 
 	program
@@ -78,13 +102,12 @@ function createProgram(): Command {
 		.option("--cwd <path>", "working directory", process.cwd())
 		.option("--force", "overwrite an existing .agent/")
 		.action(async (subOpts: { cwd: string; force?: boolean }) => {
-			const code = await runInit({ cwd: subOpts.cwd, force: subOpts.force });
-			process.exitCode = code;
+			await runWithCliError(() => runInit({ cwd: subOpts.cwd, force: subOpts.force }));
 		});
 
 	const ask = program
 		.command("ask")
-		.description("read-only Q&A about the project")
+		.description("Q&A about the project under the selected approval mode")
 		.argument("[question...]", "the question");
 	addRunOptions(ask);
 	ask.action(async (question: string[], opts: RunOpts) => {
@@ -94,17 +117,31 @@ function createProgram(): Command {
 			process.exitCode = 1;
 			return;
 		}
-		noticeIfUnsupportedMode(opts.mode);
-		const code = await runAsk({ cwd: opts.cwd, prompt, printMode: Boolean(opts.print), modelId: opts.model });
-		process.exitCode = code;
+		await runWithCliError(() =>
+			runAsk({
+				cwd: opts.cwd,
+				prompt,
+				printMode: Boolean(opts.print),
+				modelId: opts.model,
+				mode: parseApprovalMode(opts.mode),
+			}),
+		);
 	});
+
+	program
+		.command("review")
+		.description("review git diff for policy risks, missing tests, and suggestions")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.option("--mode <mode>", "approval mode used for policy classification", "workspace-write")
+		.action(async (opts: ReviewOpts) => {
+			await runWithCliError(() => runReview({ cwd: opts.cwd, mode: parseApprovalMode(opts.mode) }));
+		});
 
 	// Placeholder subcommands — real implementations land in their cycles.
 	const notReady = (cycle: string) => () => {
 		process.stderr.write(`not implemented (planned in ${cycle})\n`);
 		process.exitCode = 1;
 	};
-	program.command("review").description("review git diff for risks/gaps [C2]").action(notReady("C2"));
 	program.command("diff").description("show unified diff of current task [C3]").action(notReady("C3"));
 	program.command("undo").description("revert file changes (files only) [C3]").action(notReady("C3"));
 	program.command("mcp").description("manage MCP servers [C5]").action(notReady("C5"));

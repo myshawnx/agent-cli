@@ -1,16 +1,18 @@
 /**
- * `agent ask` / the default `agent "<task>"` run — read-only Q&A.
+ * `agent ask` / the default `agent "<task>"` run.
  *
- * Builds a readonly ProjectContext (profile + memory), wires the resource loader and
- * session, then drives either the print loop (`-p`) or the interactive TUI. The
- * session is hard-isolated to read/grep/find/ls via `computeTools("readonly")`, so
- * the agent can understand and answer but never write or execute.
+ * Builds a ProjectContext (profile + memory + policy), wires the resource loader and
+ * session, then drives either the print loop (`-p`) or the interactive TUI. C2 adds
+ * policy-gateway enforcement for suggest/workspace-write/auto; readonly remains
+ * physically hard-isolated to read/grep/find/ls via `computeTools("readonly")`.
  */
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { loadAgentConfig } from "../../config/loader.ts";
 import { loadMemory } from "../../context/memory.ts";
 import { detectProfile, loadProfile } from "../../context/profile.ts";
 import type { ProjectContext } from "../../context/types.ts";
+import type { ApprovalMode } from "../../policy/types.ts";
 import { drive, driveInteractive } from "../../runtime/driver.ts";
 import { buildResourceLoader } from "../../runtime/resource-loader.ts";
 import { buildSession } from "../../runtime/session-factory.ts";
@@ -22,16 +24,29 @@ export interface AskOptions {
 	cwd: string;
 	prompt: string;
 	printMode: boolean;
+	mode: ApprovalMode;
 	modelId?: string;
 }
 
-async function buildContext(cwd: string): Promise<ProjectContext> {
-	const profile = loadProfile(cwd) ?? (await detectProfile(cwd));
-	return { cwd, mode: "readonly", profile, memory: loadMemory(cwd) };
+async function buildContext(cwd: string, mode: ApprovalMode): Promise<ProjectContext> {
+	const config = loadAgentConfig(cwd);
+	for (const diagnostic of config.diagnostics) {
+		const fields = { file: diagnostic.file };
+		if (diagnostic.level === "error") {
+			log.error(diagnostic.message, fields);
+		} else {
+			log.warn(diagnostic.message, fields);
+		}
+	}
+	const profile = loadProfile(cwd) ?? config.profile ?? (await detectProfile(cwd));
+	return { cwd, mode, policy: config.policy, profile, memory: loadMemory(cwd) || config.memory };
 }
 
 export async function runAsk(opts: AskOptions): Promise<number> {
-	const ctx = await buildContext(opts.cwd);
+	const ctx = await buildContext(opts.cwd, opts.mode);
+	if (ctx.policy.sandbox.enabled) {
+		log.warn("policy.sandbox.enabled=true is configured; OS-level sandbox wiring is reserved for C6 hardening.");
+	}
 
 	// Interactive TUI: hand off to pi's runtime (it owns model/auth/login UI).
 	if (!opts.printMode) {
@@ -44,7 +59,7 @@ export async function runAsk(opts: AskOptions): Promise<number> {
 	await resourceLoader.reload();
 	const { session, modelFallbackMessage } = await buildSession({
 		cwd: opts.cwd,
-		mode: "readonly",
+		mode: opts.mode,
 		resourceLoader,
 		modelId: opts.modelId,
 	});

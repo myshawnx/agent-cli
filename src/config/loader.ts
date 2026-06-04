@@ -15,13 +15,24 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Compile } from "typebox/compile";
+import {
+	DEFAULT_PATH_CONFIRM_WRITE_PATTERNS,
+	DEFAULT_PATH_DENY_PATTERNS,
+	DEFAULT_POLICY_ALLOW_PATTERNS,
+	DEFAULT_POLICY_CONFIRM_PATTERNS,
+	DEFAULT_POLICY_DENY_PATTERNS,
+} from "../policy/types.ts";
 import { type PolicyConfig, PolicyConfigSchema, type ProjectProfile, ProjectProfileSchema } from "./schema.ts";
 
 export const policyValidator = Compile(PolicyConfigSchema);
 
 export const DEFAULT_POLICY_CONFIG: PolicyConfig = {
-	command: { allow: [], confirm: [], deny: [] },
-	path: { deny: [], confirmWrite: [] },
+	command: {
+		allow: DEFAULT_POLICY_ALLOW_PATTERNS,
+		confirm: DEFAULT_POLICY_CONFIRM_PATTERNS,
+		deny: DEFAULT_POLICY_DENY_PATTERNS,
+	},
+	path: { deny: DEFAULT_PATH_DENY_PATTERNS, confirmWrite: DEFAULT_PATH_CONFIRM_WRITE_PATTERNS },
 	limits: { maxChangedFiles: 20, maxFixIterations: 5, maxToolCalls: 50, commandTimeoutMs: 120_000 },
 	sandbox: { enabled: false },
 };

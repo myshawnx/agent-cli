@@ -1,11 +1,46 @@
 /**
- * Approval-mode type — shared seam for every later cycle.
+ * C2 policy types.
  *
- * C1 only ever uses `"readonly"`; the other three values are consumed by the C2
- * policy engine. The canonical definition (and its TypeBox value form) lives in
- * `config/schema.ts` so the on-disk schema and the runtime type can never drift.
- * This module re-exports just the *type*, so runtime code can depend on the
- * approval-mode contract without pulling in TypeBox.
+ * ApprovalMode and PolicyConfig are re-exported from the C0 config schema so the
+ * runtime type and on-disk `.agent/policy.json` schema stay in lock-step. C2 adds
+ * the Verdict union and the small tool-call shape consumed by the pure engine.
  */
 
-export type { ApprovalMode } from "../config/schema.ts";
+import type { ToolCallEvent } from "@earendil-works/pi-coding-agent";
+import type { ApprovalMode, PolicyConfig } from "../config/schema.ts";
+
+export type { ApprovalMode, PolicyConfig };
+
+export type Verdict = { kind: "allow" } | { kind: "confirm"; reason: string } | { kind: "deny"; reason: string };
+
+/** Minimal shape accepted by the pure policy engine and tests. */
+export type PolicyToolCall = Pick<ToolCallEvent, "toolName" | "input">;
+
+export interface ClassifyOptions {
+	/** Absolute or relative project root used for cwd-bound path checks. */
+	repoRoot: string;
+	/** Number of changed files already allowed in this agent run. */
+	changedFiles: number;
+}
+
+export const DEFAULT_POLICY_DENY_PATTERNS = ["rm -rf", "sudo", "curl | sh", "wget | sh", "chmod -R", "dd", "mkfs"];
+export const DEFAULT_POLICY_CONFIRM_PATTERNS = [
+	"git push",
+	"git commit",
+	"npm install",
+	"pnpm add",
+	"docker compose up",
+];
+export const DEFAULT_POLICY_ALLOW_PATTERNS = [
+	"npm test",
+	"npm run lint",
+	"npm run build",
+	"pnpm test",
+	"pnpm run lint",
+	"pnpm run build",
+	"pytest",
+	"go test",
+];
+
+export const DEFAULT_PATH_DENY_PATTERNS = [".git/**", ".env", "**/*.pem", "~/.ssh/**", "**/credentials*"];
+export const DEFAULT_PATH_CONFIRM_WRITE_PATTERNS = ["package.json", "**/*lock*", ".github/**", "tsconfig*.json"];

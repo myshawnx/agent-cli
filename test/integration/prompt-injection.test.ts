@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_POLICY_CONFIG } from "../../src/config/loader.ts";
 import { loadMemory } from "../../src/context/memory.ts";
 import { detectProfile } from "../../src/context/profile.ts";
 import type { ProjectContext } from "../../src/context/types.ts";
@@ -12,6 +13,7 @@ describe("resource loader prompt injection", () => {
 		const ctx: ProjectContext = {
 			cwd,
 			mode: "readonly",
+			policy: DEFAULT_POLICY_CONFIG,
 			profile,
 			memory: "Remember that CI uses pnpm.",
 		};
@@ -27,7 +29,13 @@ describe("resource loader prompt injection", () => {
 	it("loads AGENTS.md through pi native context-file loading", async () => {
 		const cwd = resolve("fixtures/hono-api");
 		const profile = await detectProfile(cwd);
-		const loader = buildResourceLoader({ cwd, mode: "readonly", profile, memory: loadMemory(cwd) });
+		const loader = buildResourceLoader({
+			cwd,
+			mode: "readonly",
+			policy: DEFAULT_POLICY_CONFIG,
+			profile,
+			memory: loadMemory(cwd),
+		});
 		await loader.reload();
 
 		const agentsFiles = loader.getAgentsFiles().agentsFiles;

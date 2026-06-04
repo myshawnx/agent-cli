@@ -26,15 +26,16 @@ npm install --ignore-scripts
 npm run build          # esbuild -> dist/cli.js
 npm test               # vitest (offline, faux provider, zero LLM calls)
 
-# Commands (C1 — v0.1 readonly shell)
+# Commands (C2 — v0.2 policy gateway)
 agent --version
 agent --help
 agent init             # detect profile and scaffold .agent/
-agent -p "这个项目是做什么的?"     # readonly print-mode Q&A
-agent ask -p "入口文件在哪?"       # explicit readonly Q&A subcommand
+agent -p "这个项目是做什么的?"     # read-only print-mode Q&A (default: suggest)
+agent --mode auto -p "写一个工具函数"  # auto-approve safe writes, deny is still hard
+agent review           # review git diff for policy risks and missing tests
 ```
 
-v0.1 is **readonly**: it exposes only `read` / `grep` / `find` / `ls` to the pi session. It does not write files or run commands; the policy layer for write/execute modes lands in C2.
+v0.2 adds a **declarative approval-mode policy gateway**: `readonly` | `suggest` | `workspace-write` | `auto`. All tool calls flow through `classify(bash, path, mode, policy)` before execution. An adversarial test suite (94 tests, offline) proves the speed bump catches `rm -rf`, `curl | sh`, writes to `.env`, and reads outside the repo root.
 
 ## Architecture
 

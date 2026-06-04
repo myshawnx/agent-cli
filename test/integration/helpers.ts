@@ -8,6 +8,7 @@ import {
 	registerFauxProvider,
 } from "@earendil-works/pi-ai";
 import { AuthStorage, type CreateAgentSessionResult, SessionManager } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_POLICY_CONFIG } from "../../src/config/loader.ts";
 import type { ProjectContext } from "../../src/context/types.ts";
 import { buildResourceLoader } from "../../src/runtime/resource-loader.ts";
 import { buildSession } from "../../src/runtime/session-factory.ts";
@@ -38,6 +39,7 @@ export async function createC1TestSession(opts?: {
 	const ctx: ProjectContext = {
 		cwd,
 		mode: "readonly",
+		policy: DEFAULT_POLICY_CONFIG,
 		memory: "",
 		...opts?.ctx,
 	};

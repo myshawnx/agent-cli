@@ -27,7 +27,7 @@ import {
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { ProjectContext } from "../context/types.ts";
 import type { AnyModel } from "./model.ts";
-import { buildInjectedSystemPrompt } from "./resource-loader.ts";
+import { buildExtensionFactories, buildInjectedSystemPrompt } from "./resource-loader.ts";
 import { computeTools } from "./session-factory.ts";
 
 export type TokenUsage = Usage;
@@ -123,6 +123,7 @@ export async function driveInteractive(opts: DriveInteractiveOptions): Promise<v
 			agentDir: runtimeAgentDir,
 			authStorage: opts.authStorage,
 			resourceLoaderOptions: {
+				extensionFactories: buildExtensionFactories(ctx),
 				appendSystemPromptOverride: (base: string[]) => [...base, ...injected],
 			},
 		});
