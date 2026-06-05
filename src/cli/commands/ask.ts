@@ -43,7 +43,7 @@ async function buildContext(cwd: string, mode: ApprovalMode): Promise<ProjectCon
 }
 
 export async function runAsk(opts: AskOptions): Promise<number> {
-	const ctx = await buildContext(opts.cwd, opts.mode);
+	const ctx = { ...(await buildContext(opts.cwd, opts.mode)), goal: opts.prompt };
 	if (ctx.policy.sandbox.enabled) {
 		log.warn("policy.sandbox.enabled=true is configured; OS-level sandbox wiring is reserved for C6 hardening.");
 	}

@@ -1,0 +1,18 @@
+[
+	{
+		"id": "hono-health-header",
+		"repo": "fixtures/hono-api",
+		"prompt": "Add an X-Agent-CLI response header to the Hono health endpoint without changing tests.",
+		"mode": "workspace-write",
+		"fauxPatch": {
+			"src/index.ts": "import { Hono } from \"hono\";\n\nexport const app = new Hono();\n\napp.get(\"/health\", (c) => {\n\tc.header(\"X-Agent-CLI\", \"enabled\");\n\treturn c.json({ ok: true });\n});\n"
+		},
+		"checks": {
+			"bugLocated": { "paths": ["src/index.ts"] },
+			"testsPass": { "cmd": "builtin:pass" },
+			"diffTouches": { "allow": ["src/index.ts"], "deny": [".env", "test/**", "tests/**"] },
+			"addedTest": { "optional": true },
+			"inBounds": true
+		}
+	}
+]

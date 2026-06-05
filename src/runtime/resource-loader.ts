@@ -14,7 +14,11 @@ import { DefaultResourceLoader, type ExtensionFactory, getAgentDir } from "@eare
 import { renderMemoryForPrompt } from "../context/memory.ts";
 import { renderProfileForPrompt } from "../context/profile.ts";
 import type { ProjectContext } from "../context/types.ts";
+import { loopGuards } from "../loop/guards.ts";
+import { mcpAdapter } from "../mcp/adapter.ts";
 import { policyGateway } from "../policy/gateway.ts";
+import { rememberTool } from "../tools/remember.ts";
+import { traceRecorder } from "../trace/entries.ts";
 
 export interface BuildResourceLoaderOptions {
 	/** Extension factories appended after policyGateway. C3/C5 inject here. */
@@ -36,7 +40,20 @@ export function buildInjectedSystemPrompt(ctx: ProjectContext): string[] {
 
 /** Extension registration order is fixed by overview §3.4: policy first. */
 export function buildExtensionFactories(ctx: ProjectContext, extraFactories?: ExtensionFactory[]): ExtensionFactory[] {
-	return [policyGateway(ctx.policy, ctx.mode, ctx.cwd), ...(extraFactories ?? [])];
+	return [
+		policyGateway(ctx.policy, ctx.mode, ctx.cwd),
+		loopGuards({
+			cwd: ctx.cwd,
+			goal: ctx.goal,
+			profile: ctx.profile,
+			maxToolCalls: ctx.policy.limits.maxToolCalls,
+			maxFixIterations: ctx.policy.limits.maxFixIterations,
+		}),
+		traceRecorder({ goal: ctx.goal, mode: ctx.mode }),
+		rememberTool(ctx.cwd),
+		mcpAdapter(ctx.cwd),
+		...(extraFactories ?? []),
+	];
 }
 
 export function buildResourceLoader(ctx: ProjectContext, opts?: BuildResourceLoaderOptions): DefaultResourceLoader {

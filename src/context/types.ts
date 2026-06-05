@@ -11,6 +11,8 @@ import type { ApprovalMode, PolicyConfig } from "../policy/types.ts";
 
 export interface ProjectContext {
 	cwd: string;
+	/** Current user goal for trace/loop guards. */
+	goal?: string;
 	/** Approval mode for this run. C2 supports all four modes. */
 	mode: ApprovalMode;
 	/** Loaded `.agent/policy.json` with defaults filled in. */

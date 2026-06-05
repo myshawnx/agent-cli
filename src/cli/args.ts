@@ -10,8 +10,14 @@ import { Command } from "commander";
 import type { ApprovalMode } from "../policy/types.ts";
 import { VERSION } from "../version.ts";
 import { runAsk } from "./commands/ask.ts";
+import { runDiff } from "./commands/diff.ts";
+import { runEval } from "./commands/eval.ts";
+import { runHistory } from "./commands/history.ts";
 import { runInit } from "./commands/init.ts";
+import { runMcp } from "./commands/mcp.ts";
 import { runReview } from "./commands/review.ts";
+import { runResume } from "./commands/resume.ts";
+import { runUndo } from "./commands/undo.ts";
 import { readPipedStdin } from "./stdin.ts";
 
 const APPROVAL_MODES: ApprovalMode[] = ["readonly", "suggest", "workspace-write", "auto"];
@@ -28,9 +34,23 @@ interface ReviewOpts {
 	mode: string;
 }
 
-const V02_NOTICE =
-	"v0.2 (C2) adds a policy gateway: bash/path checks are a string-level speed bump, not an OS sandbox.\n" +
-	"For a true boundary, enable sandbox support when C6 hardening lands.";
+interface EvalOpts {
+	cwd: string;
+	provider: "faux" | "real";
+	model?: string;
+	scenario?: string;
+	updateBaseline?: boolean;
+}
+
+interface McpOpts {
+	cwd: string;
+	command?: string;
+	args?: string;
+}
+
+const V10_NOTICE =
+	"v1.0 ships policy → loop guards → trace → MCP plus deterministic faux evals.\n" +
+	"Policy checks are a string-level speed bump, not an OS sandbox; undo is file-only.";
 
 function parseApprovalMode(mode: string): ApprovalMode {
 	if ((APPROVAL_MODES as string[]).includes(mode)) {
@@ -76,7 +96,7 @@ function createProgram(): Command {
 		.description("A local-first CLI coding assistant built on the pi agent harness (SDK, no fork).")
 		.version(VERSION, "--version", "output the version number")
 		.argument("[task...]", "natural-language task")
-		.addHelpText("after", `\n${V02_NOTICE}\n`);
+		.addHelpText("after", `\n${V10_NOTICE}\n`);
 	addRunOptions(program);
 
 	program.action(async (task: string[], opts: RunOpts) => {
@@ -137,15 +157,100 @@ function createProgram(): Command {
 			await runWithCliError(() => runReview({ cwd: opts.cwd, mode: parseApprovalMode(opts.mode) }));
 		});
 
-	// Placeholder subcommands — real implementations land in their cycles.
-	const notReady = (cycle: string) => () => {
-		process.stderr.write(`not implemented (planned in ${cycle})\n`);
-		process.exitCode = 1;
-	};
-	program.command("diff").description("show unified diff of current task [C3]").action(notReady("C3"));
-	program.command("undo").description("revert file changes (files only) [C3]").action(notReady("C3"));
-	program.command("mcp").description("manage MCP servers [C5]").action(notReady("C5"));
-	program.command("eval").description("run benchmark scenarios [C4]").action(notReady("C4"));
+	program
+		.command("history")
+		.description("list pi sessions for the current cwd")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (opts: { cwd: string }) => {
+			await runWithCliError(() => runHistory({ cwd: opts.cwd }));
+		});
+
+	const resume = program
+		.command("resume")
+		.description("resume a pi session by id or path")
+		.argument("<id>", "session id or session JSONL path")
+		.argument("[task...]", "follow-up prompt")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.option("-p, --print", "non-interactive print mode")
+		.option("--model <id>", "model identifier")
+		.option("--mode <mode>", "approval mode: readonly | suggest | workspace-write | auto", "suggest");
+	resume.action(async (id: string, task: string[], opts: RunOpts) => {
+		const prompt = await composePrompt(task);
+		await runWithCliError(() =>
+			runResume({
+				cwd: opts.cwd,
+				session: id,
+				prompt,
+				printMode: Boolean(opts.print),
+				modelId: opts.model,
+				mode: parseApprovalMode(opts.mode),
+			}),
+		);
+	});
+
+	program
+		.command("diff")
+		.description("show staged and unstaged file diff for the current task")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (opts: { cwd: string }) => {
+			await runWithCliError(() => runDiff({ cwd: opts.cwd }));
+		});
+
+	program
+		.command("undo")
+		.description("revert file changes by stashing them (files only; command side effects are not undone)")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (opts: { cwd: string }) => {
+			await runWithCliError(() => runUndo({ cwd: opts.cwd }));
+		});
+
+	program
+		.command("eval")
+		.description("run deterministic eval scenarios and render a regression matrix")
+		.option("--cwd <path>", "repo root containing eval/fixtures", process.cwd())
+		.option("--provider <provider>", "provider: faux | real", "faux")
+		.option("--model <id>", "model label for the report")
+		.option("--scenario <id>", "run a single scenario")
+		.option("--update-baseline", "write .agent/eval/baseline.json")
+		.action(async (opts: EvalOpts) => {
+			const provider = opts.provider === "real" ? "real" : "faux";
+			await runWithCliError(() =>
+				runEval({
+					cwd: opts.cwd,
+					provider,
+					model: opts.model,
+					scenario: opts.scenario,
+					updateBaseline: Boolean(opts.updateBaseline),
+				}),
+			);
+		});
+
+	const mcp = program.command("mcp").description("manage MCP stdio servers");
+	mcp
+		.command("list")
+		.description("list configured MCP servers")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (opts: McpOpts) => {
+			await runWithCliError(() => runMcp({ cwd: opts.cwd, action: "list" }));
+		});
+	mcp
+		.command("add")
+		.description("add or update an MCP stdio server")
+		.argument("<name>", "server name")
+		.requiredOption("--command <cmd>", "stdio server command")
+		.option("--args <args>", "stdio server arguments")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (name: string, opts: McpOpts) => {
+			await runWithCliError(() => runMcp({ cwd: opts.cwd, action: "add", name, command: opts.command, args: opts.args }));
+		});
+	mcp
+		.command("remove")
+		.description("remove an MCP server")
+		.argument("<name>", "server name")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (name: string, opts: McpOpts) => {
+			await runWithCliError(() => runMcp({ cwd: opts.cwd, action: "remove", name }));
+		});
 
 	return program;
 }

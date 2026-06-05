@@ -42,7 +42,7 @@ export function computeTools(mode: ApprovalMode): string[] {
 	if (mode === "readonly") {
 		return base;
 	}
-	return [...base, "edit", "write", "bash"];
+	return [...base, "edit", "write", "bash", "remember"];
 }
 
 export interface BuildSessionOptions {

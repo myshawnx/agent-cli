@@ -1,6 +1,6 @@
 {
 	"name": "agent-cli",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"description": "A local-first CLI coding assistant built on the pi agent harness (used as a library), adding a declarative safety/approval policy layer, MCP tool integration, an eval/benchmark harness, and cross-session project memory.",
 	"type": "module",
 	"bin": {
@@ -12,6 +12,8 @@
 	},
 	"scripts": {
 		"build": "node scripts/build.mjs",
+		"demo:faux": "bash scripts/demo/hero.sh --faux",
+		"demo": "bash scripts/demo/hero.sh",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",

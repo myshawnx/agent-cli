@@ -13,6 +13,7 @@ import type {
 	ToolCallEvent,
 	ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
+import { applyCommandTimeout } from "../runtime/bash-timeout.ts";
 import { classify, isWriteLikeTool } from "./engine.ts";
 import type { ApprovalMode, PolicyConfig, Verdict } from "./types.ts";
 
@@ -51,6 +52,7 @@ export function policyGateway(policy: PolicyConfig, mode: ApprovalMode, repoRoot
 		});
 
 		pi.on("tool_call", async (event, ctx) => {
+			applyCommandTimeout(event, policy.limits.commandTimeoutMs);
 			const verdict = classify(event, mode, policy, { repoRoot, changedFiles });
 			if (verdict.kind === "deny") {
 				appendPolicyDeny(pi, event, verdict.reason);
