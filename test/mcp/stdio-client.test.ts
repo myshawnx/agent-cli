@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest";
 import { McpStdioClient } from "../../src/mcp/stdio-client.ts";
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
-const STUB_SERVER = join(FIXTURES_DIR, "stub-server.mjs");
+const STUB_SERVER = join(FIXTURES_DIR, "stub-server.sh");
 
 function makeClient(name: string, env: Record<string, string>, timeoutMs = 5_000): McpStdioClient {
-	return new McpStdioClient(name, { command: process.execPath, args: [STUB_SERVER], env }, process.cwd(), timeoutMs);
+	return new McpStdioClient(name, { command: "bash", args: [STUB_SERVER], env }, process.cwd(), timeoutMs);
 }
 
-/** A temp file the stub server appends its pid to on each spawn (see fixtures/stub-server.mjs). */
+/** A temp file the stub server appends its pid to on each spawn (see fixtures/stub-server.sh). */
 function freshSpawnLog(): { dir: string; file: string } {
 	const dir = mkdtempSync(join(tmpdir(), "mcp-spawn-"));
 	return { dir, file: join(dir, "spawns.log") };

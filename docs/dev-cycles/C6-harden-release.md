@@ -158,7 +158,7 @@ await build({
 ## 6. 验收标准
 
 - [x] 三支柱联调集成测试(T6.1)已由 `test/integration/three-pillars.test.ts` 覆盖:同一 session 同时挂 policy/loop/trace/MCP,并观测到各自 entry 或 active tool。
-- [ ] 多 `tool_call` hook 短路顺序(T6.2)依赖 pi 的扩展语义与当前注册顺序;当前代码固定 policy 在前,但没有单独的“后续 hook 不执行”专项测试。
+- [x] 多 `tool_call` hook 短路顺序(T6.2)已由 `test/integration/three-pillars.test.ts` 覆盖:当前代码固定 policy 在前,并断言 policy block 后后续 `tool_call` hook 不执行。
 - [x] 测试命令超时(T6.3)已由 `test/integration/command-timeout.test.ts` 覆盖:长跑 bash 在 `commandTimeoutMs` 后返回 timeout 错误。子进程树跨平台清理仍按 known limitation 表述。
 - [x] patch fuzzy 失败(T6.4)已由 `test/loop/guards.test.ts` 覆盖:无 UI soft-stop、有 UI confirm/retry 或 decline;端到端测试可后续补。
 - [x] abort 时序(T6.5)已由 `test/integration/abort-failsafe.test.ts` 覆盖:SIGTERM 时保留 modified files、写 `abort-preserved` 和 failed `task-result`、dispose session。

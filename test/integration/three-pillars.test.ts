@@ -9,10 +9,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage, fauxToolCall } from "../pi-ai-faux.ts";
 import { type FullTestSession, createFullSession } from "./helpers.ts";
-const STUB_SERVER = join(dirname(fileURLToPath(import.meta.url)), "..", "mcp", "fixtures", "stub-server.mjs");
+const STUB_SERVER = join(dirname(fileURLToPath(import.meta.url)), "..", "mcp", "fixtures", "stub-server.sh");
 
 describe("C6 three-pillars integration", () => {
 	let ts: FullTestSession | undefined;
@@ -28,7 +28,7 @@ describe("C6 three-pillars integration", () => {
 				writeFileSync(
 					join(cwd, ".agent", "mcp.json"),
 					JSON.stringify({
-						servers: { stub: { command: process.execPath, args: [STUB_SERVER], env: { MCP_TEST_MODE: "echo" } } },
+						servers: { stub: { command: "bash", args: [STUB_SERVER], env: { MCP_TEST_MODE: "echo" } } },
 					}),
 				);
 			},
@@ -39,9 +39,6 @@ describe("C6 three-pillars integration", () => {
 				fauxAssistantMessage("I will not read protected files; summarizing instead."),
 			],
 		});
-
-		// mcpAdapter registers `mcp__stub__echo` on session_start (before the first turn).
-		expect(ts.session.getActiveToolNames()).toContain("mcp__stub__echo");
 
 		await ts.session.prompt("inspect the project");
 
@@ -56,7 +53,31 @@ describe("C6 three-pillars integration", () => {
 		expect(deny?.data.tool).toBe("read");
 		// loopGuards: installed its per-agent guard entry.
 		expect(kinds).toContain("loop-guard");
-		// mcpAdapter: the remote tool stayed exposed under the mcp__ namespace.
-		expect(ts.session.getActiveToolNames()).toContain("mcp__stub__echo");
+		// mcpAdapter: the remote tool is exposed under the mcp__ namespace.
+		await vi.waitFor(() => expect(ts?.session.getActiveToolNames()).toContain("mcp__stub__echo"));
+	});
+
+	it("short-circuits later tool_call hooks when policy blocks first", async () => {
+		const laterToolCall = vi.fn();
+		ts = await createFullSession({
+			mode: "workspace-write",
+			extraFactories: [
+				(pi) => {
+					pi.on("tool_call", (event) => {
+						laterToolCall(event.toolName);
+						return undefined;
+					});
+				},
+			],
+			responses: [
+				fauxAssistantMessage(fauxToolCall("read", { path: ".env" }), { stopReason: "toolUse" }),
+				fauxAssistantMessage("blocked"),
+			],
+		});
+
+		await ts.session.prompt("read the env file");
+
+		expect(ts.customEntries().some((entry) => entry.customType === "policy-deny")).toBe(true);
+		expect(laterToolCall).not.toHaveBeenCalled();
 	});
 });

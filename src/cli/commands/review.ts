@@ -23,9 +23,10 @@ interface ChangedFile {
 
 function git(args: string[], cwd: string): string {
 	try {
-		return execFileSync("git", args, { cwd, encoding: "utf8" });
-	} catch {
-		return "";
+		return execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 20 * 1024 * 1024 });
+	} catch (err) {
+		const output = (err as { stdout?: Buffer | string }).stdout;
+		return typeof output === "string" ? output : (output?.toString("utf8") ?? "");
 	}
 }
 
@@ -81,8 +82,8 @@ function riskLine(file: ChangedFile, verdict: Verdict): string {
 
 export async function runReview(opts: ReviewOptions): Promise<number> {
 	const config = loadAgentConfig(opts.cwd);
-	const unstaged = parseNameStatus(git(["diff", "--name-status"], opts.cwd));
-	const staged = parseNameStatus(git(["diff", "--cached", "--name-status"], opts.cwd));
+	const unstaged = parseNameStatus(git(["diff", "--name-status", "--", "."], opts.cwd));
+	const staged = parseNameStatus(git(["diff", "--cached", "--name-status", "--", "."], opts.cwd));
 	const files = uniqueFiles([...staged, ...unstaged]);
 
 	if (files.length === 0) {
