@@ -2,6 +2,7 @@
 	"name": "agent-cli",
 	"version": "1.0.0",
 	"description": "A local-first CLI coding assistant built on the pi agent harness (used as a library), adding a declarative safety/approval policy layer, MCP tool integration, an eval/benchmark harness, and cross-session project memory.",
+	"license": "MIT",
 	"type": "module",
 	"bin": {
 		"agent": "dist/cli.js"
