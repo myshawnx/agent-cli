@@ -22,7 +22,7 @@
 ## Quickstart
 
 ```bash
-npm install --ignore-scripts
+npm install           # runs postinstall dedupe needed by faux-provider tests
 npm run build          # esbuild -> dist/cli.js (TS fallback when native spawn is blocked)
 npm test               # vitest (offline, faux provider, zero LLM calls)
 
