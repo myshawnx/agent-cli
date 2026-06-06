@@ -33,7 +33,6 @@ export const PolicyConfigSchema = Type.Object({
 		maxFixIterations: Type.Integer({ default: 5 }),
 		maxToolCalls: Type.Integer({ default: 50 }),
 		tokenBudget: Type.Optional(Type.Integer()),
-		// C6 才消费,此刻入 schema 避免迁移
 		commandTimeoutMs: Type.Optional(Type.Integer({ default: 120_000 })),
 	}),
 	sandbox: Type.Object({

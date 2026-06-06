@@ -1,11 +1,11 @@
-import { getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import { SessionManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadAgentConfig } from "../../config/loader.ts";
 import { loadMemory } from "../../context/memory.ts";
 import { detectProfile, loadProfile } from "../../context/profile.ts";
 import type { ProjectContext } from "../../context/types.ts";
 import type { ApprovalMode } from "../../policy/types.ts";
-import { drive } from "../../runtime/driver.ts";
+import { drive, driveInteractive } from "../../runtime/driver.ts";
 import { buildResourceLoader } from "../../runtime/resource-loader.ts";
 import { buildSession } from "../../runtime/session-factory.ts";
 
@@ -38,19 +38,28 @@ export async function runResume(opts: ResumeOptions): Promise<number> {
 		process.stderr.write(`No session found for "${opts.session}". Run agent history first.\n`);
 		return 1;
 	}
-	if (!opts.prompt?.trim()) {
-		process.stdout.write(`Resolved session: ${sessionPath}\nPass a prompt after the id to continue it.\n`);
+	const prompt = opts.prompt?.trim() || undefined;
+	const sessionManager = SessionManager.open(sessionPath, undefined, opts.cwd);
+
+	const ctx = await buildContext(opts.cwd, opts.mode, prompt);
+	if (!opts.printMode) {
+		await driveInteractive({
+			ctx,
+			prompt,
+			modelId: opts.modelId,
+			agentDir: getAgentDir(),
+			sessionManager,
+		});
 		return 0;
 	}
-	if (!opts.printMode) {
-		process.stderr.write("agent resume currently supports print mode only; pass -p/--print.\n");
-		return 1;
+	if (!prompt) {
+		process.stdout.write(
+			`Resolved session: ${sessionPath}\nPass a prompt after the id to continue it in print mode.\n`,
+		);
+		return 0;
 	}
-
-	const ctx = await buildContext(opts.cwd, opts.mode, opts.prompt);
 	const resourceLoader = buildResourceLoader(ctx);
 	await resourceLoader.reload();
-	const sessionManager = SessionManager.open(sessionPath, undefined, opts.cwd);
 	const { session: agentSession } = await buildSession({
 		cwd: opts.cwd,
 		mode: opts.mode,
@@ -59,7 +68,6 @@ export async function runResume(opts: ResumeOptions): Promise<number> {
 		agentDir: getAgentDir(),
 		sessionManager,
 	});
-	await drive(agentSession, { printMode: true, prompt: opts.prompt });
+	await drive(agentSession, { printMode: true, prompt });
 	return 0;
 }
-

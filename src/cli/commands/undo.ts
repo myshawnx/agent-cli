@@ -23,4 +23,3 @@ export async function runUndo(opts: UndoOptions): Promise<number> {
 	process.stdout.write(output.trim() ? `${output}` : `Saved working tree snapshot: ${message}\n`);
 	return 0;
 }
-

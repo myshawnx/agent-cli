@@ -6,9 +6,9 @@
  * This is the template for every later integration test (C1–C5).
  */
 
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { type TestSession, createTestSession } from "./harness.ts";
+import { fauxAssistantMessage } from "./pi-ai-faux.ts";
 
 describe("no-op headless session", () => {
 	let ts: TestSession;

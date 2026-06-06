@@ -12,6 +12,7 @@
 	},
 	"scripts": {
 		"build": "node scripts/build.mjs",
+		"postinstall": "node scripts/dedupe-pi-ai.mjs",
 		"demo:faux": "bash scripts/demo/hero.sh --faux",
 		"demo": "bash scripts/demo/hero.sh",
 		"typecheck": "tsc --noEmit",

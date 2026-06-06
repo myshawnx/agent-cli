@@ -10,8 +10,17 @@ describe("computeTools", () => {
 	});
 
 	it("non-readonly modes include the write-capable tools for C2 policy gating", () => {
-		expect(computeTools("suggest")).toEqual(["read", "grep", "find", "ls", "edit", "write", "bash"]);
-		expect(computeTools("workspace-write")).toEqual(["read", "grep", "find", "ls", "edit", "write", "bash"]);
-		expect(computeTools("auto")).toEqual(["read", "grep", "find", "ls", "edit", "write", "bash"]);
+		expect(computeTools("suggest")).toEqual(["read", "grep", "find", "ls", "edit", "write", "bash", "remember"]);
+		expect(computeTools("workspace-write")).toEqual([
+			"read",
+			"grep",
+			"find",
+			"ls",
+			"edit",
+			"write",
+			"bash",
+			"remember",
+		]);
+		expect(computeTools("auto")).toEqual(["read", "grep", "find", "ls", "edit", "write", "bash", "remember"]);
 	});
 });

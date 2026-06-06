@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
 export interface FailureSignature {
 	signature: string;
 	failingTests: string[];
@@ -23,7 +25,7 @@ function textFromContent(content: unknown): string {
 
 export function normalizeFailureText(text: string): string {
 	return text
-		.replace(/\x1b\[[0-9;]*m/g, "")
+		.replace(ANSI_ESCAPE_RE, "")
 		.replace(/\b\d+(?:\.\d+)?\s?ms\b/g, "<time>")
 		.replace(/\b\d{2}:\d{2}:\d{2}\b/g, "<clock>")
 		.replace(/[A-Z]:\\[^\s)]+/g, "<path>")
@@ -70,4 +72,3 @@ export function createFailureSignature(input: { content?: unknown; isError?: boo
 		passedCount: extractPassedCount(raw),
 	};
 }
-

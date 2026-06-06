@@ -68,12 +68,15 @@ import { createAgentSession, SessionManager, SettingsManager } from "@earendil-w
 const { session } = await createAgentSession({
   cwd, agentDir,
   model,
-  tools: resolveToolsForMode(approvalMode),        // 我的策略：readonly 模式直接排除 write/edit/bash
+  ...(approvalMode === "readonly"
+    ? { tools: ["read", "grep", "find", "ls"] }    // readonly:pi 全局 allowlist 硬隔离
+    : { noTools: "builtin" }),                     // 非 readonly:避免过滤动态注册的 mcp__*
   resourceLoader,                                  // 注入 profile/instructions/memory 到系统提示
   sessionManager: SessionManager.create(cwd),      // 单一真相源 = pi 的 session
   settingsManager: SettingsManager.inMemory({ retry: { enabled: true, maxRetries: 2 } }),
   // 我的扩展在这里挂载：安全网关、MCP 工具、task trace
 });
+session.setActiveToolsByName(resolveToolsForMode(approvalMode));
 ```
 
 ---
@@ -88,8 +91,8 @@ pi 的 `permission-gate.ts` 只是 ~30 行硬编码正则、且 block-by-default
 
 | 模式 | 强制机制（具体到 pi 接口） |
 |---|---|
-| `readonly` | 启动时 `tools` 白名单**排除** write/edit/bash/apply_patch（硬隔离，非提示级） |
-| `suggest` | 允许 edit 计算 diff，但在 `tool_call` 拦截、返回 diff **不落盘**；bash 强制只读/确认 |
+| `readonly` | 创建 session 时传 `tools: ["read","grep","find","ls"]` 作为 pi 全局 allowlist，非只读工具和动态 MCP 工具都不会出现（硬隔离，非提示级） |
+| `suggest` | `edit/write` 仍可被模型提出，但 `tool_call` 阶段统一走 confirm gate；确认前不落盘，当前没有独立 `propose_patch` 工具 |
 | `workspace-write` | 允许 cwd 内写；越界路径 + 敏感清单**阻断**；confirm 类操作 `ctx.ui.confirm` |
 | `auto` | 不弹确认，但 **deny 清单依然硬生效**（修正 v1 矛盾：auto ≠ 放飞） |
 
@@ -125,8 +128,9 @@ pi.on("tool_call", async (event, ctx) => {
 **威胁模型（必须在文档里写清楚，否则一问就崩）：**
 路径黑名单**挡不住 bash**——`cat ~/.ssh/id_rsa`、`> .env` 都绕过 write/edit（pi 自己的 protected-paths 也只挡 write/edit）。本项目采取**双轨 + 诚实表述**：
 - 默认：bash 命令经过同一策略引擎做**字符串级风险分级**（减速带，**不号称是安全边界**）。
-- 强保护可选：接入 pi 的 `@anthropic-ai/sandbox-runtime` 扩展做 **OS 级 denyRead/denyWrite**（真边界，仅 macOS/Linux）。
-- 文档**不把"deny .env"写成铁律卖点**，而写成"策略 + 可选沙箱"，并交付一个**对抗性测试套件**证明拦截行为。
+- v1.0 现实边界：`policy.sandbox.enabled` 是预留字段，开启时只告警，不接 OS sandbox。
+- 后续强保护目标：接入 pi 的 `@anthropic-ai/sandbox-runtime` 扩展做 **OS 级 denyRead/denyWrite**（真边界，仅 macOS/Linux）。
+- 文档**不把"deny .env"写成铁律卖点**，而写成"策略减速带 + sandbox 后续项"，并交付一个**对抗性测试套件**证明当前拦截行为。
 
 ### 5.2 MCP-to-Pi adapter（pi 明确没有，README 邀请你做）
 
@@ -135,11 +139,12 @@ MCP server (stdio, JSON-RPC) → adapter → pi.registerTool() → agent 可调�
 ```
 
 要点（也是面试会深挖的真实难点）：
-- **发现**：`session_start` 时按 config 启动 MCP server，调 `tools/list`。
-- **schema 映射**：MCP 的 JSON Schema → pi 工具的 TypeBox 参数；**诚实标注**只支持子集（object + string/number/enum/array），`oneOf/$ref/递归` 走宽松 passthrough + 运行时校验，映射不了的工具**跳过并告警**（不假装"已解决"）。
-- **输出**：MCP 结果复用 pi 的 `truncateHead/truncateTail`，避免 50KB JSON 撑爆上下文。
-- **生命周期**：server spawn/crash/restart；崩溃不能把 pi 的 loop 卡死。
-- **Demo**：`agent mcp add github` → 读 issue #12 → 改代码 → 生成 PR summary。
+- **发现与生命周期**：非 `readonly` 会话的 `session_start` 读取 `.agent/mcp.json`；每个 server 对应一个常驻 `McpStdioClient`，只做一次 `initialize`，随后 `tools/list` 与 `tools/call` 复用同一 stdio 连接。
+- **schema 映射（已实现子集）**：当远端 `inputSchema` 顶层是 `object` 时，`schema-map.ts` 会把 JSON Schema 子集映射到 TypeBox：`object`、`string`、`string enum`、`number`、`integer`、`boolean`、`array`。`oneOf`、`anyOf`、`$ref`、递归、缺失 `type` 等复杂结构回退为宽松透传，不假装完整支持全部 JSON Schema。
+- **输出**：MCP 结果复用 pi 的 `truncateTail(...).content`，避免 50KB JSON 撑爆上下文。
+- **崩溃与取消**：JSON-RPC 响应按 `id` 路由；每个请求有超时，默认复用 `policy.limits.commandTimeoutMs`；abort 只 reject 当前请求并保留连接；server 崩溃会 reject 在途请求、记录 `mcp-error`，并 best-effort 从 active tools 摘掉该 server 的工具。
+- **readonly 边界**：`readonly` 下不注册 `mcpAdapter`，避免动态 MCP 工具绕过只读硬隔离。未来如果要只读 MCP，需要新增 MCP 工具级 policy，而不是直接放开 adapter。
+- **Demo**：`agent mcp add github` → 非只读会话启动时注册 `mcp__github__*` 工具 → agent 调用时仍先经过 policy gateway。当前仓库的 hero 脚本只做 MCP 配置 smoke，不承诺完整 GitHub issue 修复链路。
 
 ### 5.3 Eval / Benchmark harness（最高信号，pi 零覆盖）
 
@@ -148,7 +153,7 @@ MCP server (stdio, JSON-RPC) → adapter → pi.registerTool() → agent 可调�
 - **fixture**：一个 planted-bug TS repo（含 token 过期 500→401 等 5–10 个场景）。
 - **打分**：每个场景自动判定 `{找到 bug, 修复, 新增测试通过, 产出 diff, 未越权}`。
 - **回归表**：同一套场景跑在不同 model / prompt 版本上，输出对比表，能检测"某次 prompt 改动让 test-loop 退化"。
-- **隔离**：用 pi 的 pluggable operations / 录制式假 provider 跑，**不烧真实 LLM 调用**做单测。
+- **工程踩坑**：pi-coding-agent 可能嵌套安装另一份 `@earendil-works/pi-ai`，导致 faux provider 注册到顶层 registry、agent loop 却读取嵌套 registry，出现 `No API provider registered for api: faux:...`。当前 `postinstall` 会运行 `scripts/dedupe-pi-ai.mjs`，只在嵌套副本与顶层版本一致时删除嵌套副本，版本不一致则 warning。
 
 ### 5.4 项目画像 + 跨会话记忆（只装 pi 没有的）
 
@@ -208,7 +213,7 @@ agent init                  # 生成 .agent/（profile + policy + memory 骨架�
 | 畸形 tool args | 委托 pi（参数 schema 校验） |
 | 大输出撑爆上下文 | 委托 pi（truncate / OutputAccumulator） |
 | Ctrl-C / SIGTERM 中断 | 接 pi 的 abort signal，落到 §7 的"失败保全" |
-| 测试命令挂死 | **自己管**：命令超时 → 杀进程 → 计一次失败 |
+| 测试命令挂死 | **自己管**：命令超时 → 中止本次 bash 执行 → 回灌 timeout 错误；进程树终止按平台 best-effort |
 | patch fuzzy 匹配失败 | **自己管**：报告无法定位 → 不静默写错位置 |
 | 预算耗尽 | **自己管**：停 + 总结（§7） |
 
@@ -240,7 +245,7 @@ agent init                  # 生成 .agent/（profile + policy + memory 骨架�
 | **v0.2** | 安全策略层 | ★ approval-mode 状态机 + 命令分级 + 路径策略 + **对抗性测试**；○ 复用 git-checkpoint 做 undo |
 | **v0.3** | 受控 test-fix loop | ★ §7 的预算/终止/防 reward-hacking 守卫；○ 复用 pi 的 bash/编辑/迭代 |
 | **v0.4** | **Eval harness** | ★ fixture repo + 自动打分 + 回归表（项目的度量基石） |
-| **v0.5** | **MCP adapter** | ★ stdio/JSON-RPC + schema 映射 + GitHub 端到端 demo |
+| **v0.5** | **MCP adapter** | ★ 持久 stdio/JSON-RPC + schema 映射 + MCP 配置 smoke / 可选外部 server 演示 |
 | **v1.0** | 展示版 | 三大支柱齐活 + 一页"pi 给了什么/我加了什么"设计文档 + README 架构图 |
 
 > 说明：v0.1–v0.3 不再宣称"实现了工具/会话/测试循环"，而是"**在 pi 之上配置/约束/度量**它们"。
@@ -259,7 +264,7 @@ agent "修复登录 token 过期返回 500 的问题（应 401），并补测试
 1. 搜索/读文件/改 auth middleware/新增测试/跑测试/展示 diff/总结（○ pi 能力）。
 2. **安全拦截演示**：故意诱发 `rm -rf` / 写 `.env`，展示策略层阻断（★）。
 3. **eval 演示**：`agent eval` 输出"5/6 场景通过"的回归表（★）。
-4. **MCP 演示**：`agent "按 GitHub issue #12 修复"` 走 MCP adapter（★）。
+4. **MCP 演示**：`agent mcp list/add/remove` 展示 `.agent/mcp.json` 管理；非只读会话启动时会注册 `mcp__*` 工具。当前 hero 脚本只做 MCP 配置 smoke；完整 GitHub issue 修复链路依赖外部 server/token，不能写成固定承诺。
 
 ---
 
@@ -277,10 +282,10 @@ agent "修复登录 token 过期返回 500 的问题（应 401），并补测试
 
 - **"pi 已经是 coding agent，你做了什么？"** → 指 §3 对照表：pi 是我的 runtime；我做了安全策略层、MCP 集成、eval 度量、项目记忆——pi 都没有。
 - **"为什么不直接用 pi / 写三个扩展？"** → 子命令 + `-p` 策略 + 模式切换需要进程入口，扩展做不到，所以走 SDK（`createAgentSession`）；fork 则要背 pi 的维护成本，没有收益。
-- **"安全怎么防 bash 绕过？"** → §5.1 威胁模型:策略分级（减速带）+ 可选 sandbox-runtime（OS 级真边界），并诚实区分两者。
+- **"安全怎么防 bash 绕过？"** → §5.1 威胁模型:策略分级是减速带；v1.0 的 `sandbox.enabled` 仅预留告警，OS 级真边界是后续项。
 - **"test-loop 不用 LangGraph 怎么控？"** → §7:loop 是 pi 的，**守卫是我的**（预算/无进展检测/防 reward-hacking/失败保全）。
 - **"怎么证明它有效？"** → §5.3 eval harness（不是单个 demo）。
-- **"最难的工程点？"** → MCP 的 JSONSchema→TypeBox 映射 + server 崩溃不卡死 loop；或审批模式与 pi 并行工具执行的交互（deny 要在 mutation queue 落盘前短路）。
+- **"最难的工程点？"** → MCP 的持久 stdio 生命周期与 JSONSchema→TypeBox 子集映射:每个 server 一个常驻 client、单次 initialize、JSON-RPC 响应按 id 路由、abort 只取消当前请求、崩溃时 reject 在途请求并 best-effort 摘掉 active tools；复杂 schema 回退宽松透传。另一个难点是审批模式与 pi 工具执行的交互:deny/confirm 必须在 mutation queue 落盘前短路。
 
 ---
 

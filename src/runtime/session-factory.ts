@@ -85,13 +85,14 @@ export function resolveModel(opts: { model?: AnyModel; modelId?: string }): AnyM
  * Build a pi agent session with the C1 wiring. Returns pi's full result so the
  * caller can read `modelFallbackMessage` for friendly no-model errors.
  */
-export function buildSession(opts: BuildSessionOptions): Promise<CreateAgentSessionResult> {
+export async function buildSession(opts: BuildSessionOptions): Promise<CreateAgentSessionResult> {
 	const model = resolveModel({ model: opts.model, modelId: opts.modelId });
-	return createAgentSession({
+	const toolOptions = opts.mode === "readonly" ? { tools: computeTools(opts.mode) } : { noTools: "builtin" as const };
+	const result = await createAgentSession({
 		cwd: opts.cwd,
 		agentDir: opts.agentDir,
 		model,
-		tools: computeTools(opts.mode), // ★ allowlist = the only readonly boundary
+		...toolOptions,
 		resourceLoader: opts.resourceLoader,
 		sessionManager: opts.sessionManager ?? SessionManager.create(opts.cwd), // pi session = single source of truth
 		settingsManager: SettingsManager.inMemory({
@@ -99,4 +100,10 @@ export function buildSession(opts: BuildSessionOptions): Promise<CreateAgentSess
 		}),
 		authStorage: opts.authStorage,
 	});
+	const activeToolNames =
+		opts.mode === "readonly"
+			? computeTools(opts.mode)
+			: [...new Set([...computeTools(opts.mode), ...result.session.getActiveToolNames()])];
+	result.session.setActiveToolsByName(activeToolNames);
+	return result;
 }

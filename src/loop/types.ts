@@ -4,6 +4,8 @@ export interface LoopGuardState {
 	goal: string;
 	toolCalls: number;
 	blocked: boolean;
+	tokenBudgetExceeded: boolean;
+	totalTokens: number;
 	lastFailureSignature?: string;
 	repeatedFailures: number;
 }
@@ -14,5 +16,5 @@ export interface LoopGuardOptions {
 	profile?: ProjectProfile;
 	maxToolCalls: number;
 	maxFixIterations: number;
+	tokenBudget?: number;
 }
-

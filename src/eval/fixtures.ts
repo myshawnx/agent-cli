@@ -14,4 +14,3 @@ export function copyFixtureToTemp(root: string, repo: string): string {
 	cpSync(source, dest, { recursive: true, dereference: true });
 	return dest;
 }
-

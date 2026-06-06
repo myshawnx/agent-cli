@@ -13,7 +13,7 @@ import type {
 	ToolCallEvent,
 	ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
-import { applyCommandTimeout } from "../runtime/bash-timeout.ts";
+import { applyCommandTimeout } from "../runtime/bash-timeout-core.ts";
 import { classify, isWriteLikeTool } from "./engine.ts";
 import type { ApprovalMode, PolicyConfig, Verdict } from "./types.ts";
 

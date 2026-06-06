@@ -15,8 +15,9 @@ import { runEval } from "./commands/eval.ts";
 import { runHistory } from "./commands/history.ts";
 import { runInit } from "./commands/init.ts";
 import { runMcp } from "./commands/mcp.ts";
-import { runReview } from "./commands/review.ts";
 import { runResume } from "./commands/resume.ts";
+import { runReview } from "./commands/review.ts";
+import { runTrace } from "./commands/trace.ts";
 import { runUndo } from "./commands/undo.ts";
 import { readPipedStdin } from "./stdin.ts";
 
@@ -48,6 +49,8 @@ interface McpOpts {
 	args?: string;
 }
 
+type OptionBag = Record<string, unknown>;
+
 const V10_NOTICE =
 	"v1.0 ships policy → loop guards → trace → MCP plus deterministic faux evals.\n" +
 	"Policy checks are a string-level speed bump, not an OS sandbox; undo is file-only.";
@@ -57,6 +60,33 @@ function parseApprovalMode(mode: string): ApprovalMode {
 		return mode as ApprovalMode;
 	}
 	throw new Error(`invalid --mode "${mode}" (expected ${APPROVAL_MODES.join(" | ")})`);
+}
+
+function explicitOption(command: Command | undefined, key: string): unknown {
+	for (let current: Command | null | undefined = command; current; current = current.parent) {
+		const source = current.getOptionValueSource(key);
+		if (source && source !== "default") {
+			return current.getOptionValue(key);
+		}
+	}
+	return undefined;
+}
+
+function optionValue<T>(opts: OptionBag | undefined, command: Command | undefined, key: string, fallback: T): T {
+	const explicit = explicitOption(command, key);
+	if (explicit !== undefined) {
+		return explicit as T;
+	}
+	const local = opts?.[key];
+	return (local === undefined ? fallback : local) as T;
+}
+
+function cwdOption(opts: OptionBag | undefined, command: Command | undefined): string {
+	return optionValue(opts, command, "cwd", process.cwd());
+}
+
+function modeOption(opts: OptionBag | undefined, command: Command | undefined, fallback: ApprovalMode): ApprovalMode {
+	return parseApprovalMode(optionValue(opts, command, "mode", fallback));
 }
 
 /** Shared run options for the default action and the `ask` subcommand. */
@@ -99,7 +129,7 @@ function createProgram(): Command {
 		.addHelpText("after", `\n${V10_NOTICE}\n`);
 	addRunOptions(program);
 
-	program.action(async (task: string[], opts: RunOpts) => {
+	program.action(async (task: string[], opts: RunOpts, command: Command) => {
 		const prompt = await composePrompt(task);
 		if (!prompt) {
 			program.help();
@@ -107,11 +137,11 @@ function createProgram(): Command {
 		}
 		await runWithCliError(() =>
 			runAsk({
-				cwd: opts.cwd,
+				cwd: cwdOption(opts as unknown as OptionBag, command),
 				prompt,
-				printMode: Boolean(opts.print),
-				modelId: opts.model,
-				mode: parseApprovalMode(opts.mode),
+				printMode: Boolean(optionValue(opts as unknown as OptionBag, command, "print", false)),
+				modelId: optionValue<string | undefined>(opts as unknown as OptionBag, command, "model", undefined),
+				mode: modeOption(opts as unknown as OptionBag, command, "suggest"),
 			}),
 		);
 	});
@@ -121,8 +151,8 @@ function createProgram(): Command {
 		.description("detect the project profile and scaffold .agent/")
 		.option("--cwd <path>", "working directory", process.cwd())
 		.option("--force", "overwrite an existing .agent/")
-		.action(async (subOpts: { cwd: string; force?: boolean }) => {
-			await runWithCliError(() => runInit({ cwd: subOpts.cwd, force: subOpts.force }));
+		.action(async (subOpts: { cwd: string; force?: boolean }, command: Command) => {
+			await runWithCliError(() => runInit({ cwd: cwdOption(subOpts as OptionBag, command), force: subOpts.force }));
 		});
 
 	const ask = program
@@ -130,7 +160,7 @@ function createProgram(): Command {
 		.description("Q&A about the project under the selected approval mode")
 		.argument("[question...]", "the question");
 	addRunOptions(ask);
-	ask.action(async (question: string[], opts: RunOpts) => {
+	ask.action(async (question: string[], opts: RunOpts, command: Command) => {
 		const prompt = await composePrompt(question);
 		if (!prompt) {
 			process.stderr.write('usage: agent ask "<question>" (or pipe content via stdin)\n');
@@ -139,11 +169,11 @@ function createProgram(): Command {
 		}
 		await runWithCliError(() =>
 			runAsk({
-				cwd: opts.cwd,
+				cwd: cwdOption(opts as unknown as OptionBag, command),
 				prompt,
-				printMode: Boolean(opts.print),
-				modelId: opts.model,
-				mode: parseApprovalMode(opts.mode),
+				printMode: Boolean(optionValue(opts as unknown as OptionBag, command, "print", false)),
+				modelId: optionValue<string | undefined>(opts as unknown as OptionBag, command, "model", undefined),
+				mode: modeOption(opts as unknown as OptionBag, command, "suggest"),
 			}),
 		);
 	});
@@ -153,16 +183,30 @@ function createProgram(): Command {
 		.description("review git diff for policy risks, missing tests, and suggestions")
 		.option("--cwd <path>", "working directory", process.cwd())
 		.option("--mode <mode>", "approval mode used for policy classification", "workspace-write")
-		.action(async (opts: ReviewOpts) => {
-			await runWithCliError(() => runReview({ cwd: opts.cwd, mode: parseApprovalMode(opts.mode) }));
+		.action(async (opts: ReviewOpts, command: Command) => {
+			await runWithCliError(() =>
+				runReview({
+					cwd: cwdOption(opts as unknown as OptionBag, command),
+					mode: modeOption(opts as unknown as OptionBag, command, "workspace-write"),
+				}),
+			);
 		});
 
 	program
 		.command("history")
 		.description("list pi sessions for the current cwd")
 		.option("--cwd <path>", "working directory", process.cwd())
-		.action(async (opts: { cwd: string }) => {
-			await runWithCliError(() => runHistory({ cwd: opts.cwd }));
+		.action(async (opts: { cwd: string }, command: Command) => {
+			await runWithCliError(() => runHistory({ cwd: cwdOption(opts as OptionBag, command) }));
+		});
+
+	program
+		.command("trace")
+		.description("show the task-trace summary (TaskView) for a session (default: most recent)")
+		.argument("[id]", "session id or session JSONL path")
+		.option("--cwd <path>", "working directory", process.cwd())
+		.action(async (id: string | undefined, opts: { cwd: string }, command: Command) => {
+			await runWithCliError(() => runTrace({ cwd: cwdOption(opts as OptionBag, command), session: id }));
 		});
 
 	const resume = program
@@ -174,16 +218,16 @@ function createProgram(): Command {
 		.option("-p, --print", "non-interactive print mode")
 		.option("--model <id>", "model identifier")
 		.option("--mode <mode>", "approval mode: readonly | suggest | workspace-write | auto", "suggest");
-	resume.action(async (id: string, task: string[], opts: RunOpts) => {
+	resume.action(async (id: string, task: string[], opts: RunOpts, command: Command) => {
 		const prompt = await composePrompt(task);
 		await runWithCliError(() =>
 			runResume({
-				cwd: opts.cwd,
+				cwd: cwdOption(opts as unknown as OptionBag, command),
 				session: id,
 				prompt,
-				printMode: Boolean(opts.print),
-				modelId: opts.model,
-				mode: parseApprovalMode(opts.mode),
+				printMode: Boolean(optionValue(opts as unknown as OptionBag, command, "print", false)),
+				modelId: optionValue<string | undefined>(opts as unknown as OptionBag, command, "model", undefined),
+				mode: modeOption(opts as unknown as OptionBag, command, "suggest"),
 			}),
 		);
 	});
@@ -192,16 +236,16 @@ function createProgram(): Command {
 		.command("diff")
 		.description("show staged and unstaged file diff for the current task")
 		.option("--cwd <path>", "working directory", process.cwd())
-		.action(async (opts: { cwd: string }) => {
-			await runWithCliError(() => runDiff({ cwd: opts.cwd }));
+		.action(async (opts: { cwd: string }, command: Command) => {
+			await runWithCliError(() => runDiff({ cwd: cwdOption(opts as OptionBag, command) }));
 		});
 
 	program
 		.command("undo")
 		.description("revert file changes by stashing them (files only; command side effects are not undone)")
 		.option("--cwd <path>", "working directory", process.cwd())
-		.action(async (opts: { cwd: string }) => {
-			await runWithCliError(() => runUndo({ cwd: opts.cwd }));
+		.action(async (opts: { cwd: string }, command: Command) => {
+			await runWithCliError(() => runUndo({ cwd: cwdOption(opts as OptionBag, command) }));
 		});
 
 	program
@@ -212,11 +256,11 @@ function createProgram(): Command {
 		.option("--model <id>", "model label for the report")
 		.option("--scenario <id>", "run a single scenario")
 		.option("--update-baseline", "write .agent/eval/baseline.json")
-		.action(async (opts: EvalOpts) => {
+		.action(async (opts: EvalOpts, command: Command) => {
 			const provider = opts.provider === "real" ? "real" : "faux";
 			await runWithCliError(() =>
 				runEval({
-					cwd: opts.cwd,
+					cwd: cwdOption(opts as unknown as OptionBag, command),
 					provider,
 					model: opts.model,
 					scenario: opts.scenario,
@@ -230,8 +274,8 @@ function createProgram(): Command {
 		.command("list")
 		.description("list configured MCP servers")
 		.option("--cwd <path>", "working directory", process.cwd())
-		.action(async (opts: McpOpts) => {
-			await runWithCliError(() => runMcp({ cwd: opts.cwd, action: "list" }));
+		.action(async (opts: McpOpts, command: Command) => {
+			await runWithCliError(() => runMcp({ cwd: cwdOption(opts as unknown as OptionBag, command), action: "list" }));
 		});
 	mcp
 		.command("add")
@@ -240,16 +284,26 @@ function createProgram(): Command {
 		.requiredOption("--command <cmd>", "stdio server command")
 		.option("--args <args>", "stdio server arguments")
 		.option("--cwd <path>", "working directory", process.cwd())
-		.action(async (name: string, opts: McpOpts) => {
-			await runWithCliError(() => runMcp({ cwd: opts.cwd, action: "add", name, command: opts.command, args: opts.args }));
+		.action(async (name: string, opts: McpOpts, command: Command) => {
+			await runWithCliError(() =>
+				runMcp({
+					cwd: cwdOption(opts as unknown as OptionBag, command),
+					action: "add",
+					name,
+					command: opts.command,
+					args: opts.args,
+				}),
+			);
 		});
 	mcp
 		.command("remove")
 		.description("remove an MCP server")
 		.argument("<name>", "server name")
 		.option("--cwd <path>", "working directory", process.cwd())
-		.action(async (name: string, opts: McpOpts) => {
-			await runWithCliError(() => runMcp({ cwd: opts.cwd, action: "remove", name }));
+		.action(async (name: string, opts: McpOpts, command: Command) => {
+			await runWithCliError(() =>
+				runMcp({ cwd: cwdOption(opts as unknown as OptionBag, command), action: "remove", name }),
+			);
 		});
 
 	return program;

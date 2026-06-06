@@ -39,4 +39,3 @@ export interface EvalReport {
 	results: EvalRunResult[];
 	baseline?: Record<string, boolean>;
 }
-

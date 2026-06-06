@@ -42,6 +42,7 @@ describe("print driver", () => {
 			},
 			getLastAssistantText: () => "hello from fallback",
 			messages: [],
+			bindExtensions: async () => {},
 		};
 
 		const originalWrite = process.stdout.write;

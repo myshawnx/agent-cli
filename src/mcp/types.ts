@@ -14,4 +14,3 @@ export interface McpToolInfo {
 	description?: string;
 	inputSchema?: unknown;
 }
-

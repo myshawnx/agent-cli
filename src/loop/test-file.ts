@@ -35,13 +35,17 @@ function globToRegex(glob: string): RegExp {
 function matchesAny(path: string, patterns: string[]): boolean {
 	const normalized = normalizePath(path);
 	const candidates = [normalized, basename(normalized)];
-	return patterns.some((pattern) => globToRegex(pattern).test(normalized) || candidates.some((c) => globToRegex(pattern).test(c)));
+	return patterns.some(
+		(pattern) => globToRegex(pattern).test(normalized) || candidates.some((c) => globToRegex(pattern).test(c)),
+	);
 }
 
 export function isTestFile(path: string, profile?: ProjectProfile): boolean {
 	const normalized = normalizePath(path);
 	const configuredDirs = profile?.testDirs ?? [];
-	if (configuredDirs.some((dir) => normalized === normalizePath(dir) || normalized.startsWith(`${normalizePath(dir)}/`))) {
+	if (
+		configuredDirs.some((dir) => normalized === normalizePath(dir) || normalized.startsWith(`${normalizePath(dir)}/`))
+	) {
 		return true;
 	}
 	return matchesAny(normalized, [
@@ -68,4 +72,3 @@ export function isTestFixGoal(goal: string): boolean {
 export function allowsTestWrites(goal: string): boolean {
 	return /(add|write|create|update|补|新增|编写).{0,16}(test|spec|测试|用例)/i.test(goal);
 }
-

@@ -14,7 +14,13 @@ async function buildWithEsbuild() {
 		target: "node22",
 		bundle: true,
 		sourcemap: true,
-		banner: { js: "#!/usr/bin/env node" },
+		banner: {
+			js: [
+				"#!/usr/bin/env node",
+				'import { createRequire as __agentCreateRequire } from "node:module";',
+				"const require = __agentCreateRequire(import.meta.url);",
+			].join("\n"),
+		},
 		external,
 	});
 }
@@ -27,7 +33,9 @@ function walkTsFiles(dir, out = []) {
 }
 
 function rewriteTsSpecifiers(source) {
-	return source.replace(/(from\s+["'][^"']+)\.ts(["'])/g, "$1.js$2").replace(/(import\(["'][^"']+)\.ts(["']\))/g, "$1.js$2");
+	return source
+		.replace(/(from\s+["'][^"']+)\.ts(["'])/g, "$1.js$2")
+		.replace(/(import\(["'][^"']+)\.ts(["']\))/g, "$1.js$2");
 }
 
 function emitFallback() {
@@ -59,4 +67,3 @@ try {
 	emitFallback();
 	console.log("built dist/cli.js (fallback)");
 }
-

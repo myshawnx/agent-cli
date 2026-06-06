@@ -4,7 +4,7 @@
  * These helpers protect pi's file tools and provide a best-effort bash path speed
  * bump. They are deliberately conservative and small: good enough to catch common
  * accidents/obvious adversarial strings, not a complete shell parser. True read/write
- * isolation belongs to the optional sandbox layer documented in C2/C6.
+ * isolation belongs to the planned OS sandbox follow-up.
  */
 
 import { basename, isAbsolute, relative, resolve } from "node:path";

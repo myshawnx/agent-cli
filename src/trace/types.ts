@@ -23,4 +23,3 @@ export interface TaskView {
 	modifiedFiles: string[];
 	result?: TaskResultEntry;
 }
-

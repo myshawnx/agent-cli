@@ -9,7 +9,7 @@ function git(args: string[], cwd: string): string {
 		return execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 20 * 1024 * 1024 });
 	} catch (err) {
 		const output = (err as { stdout?: Buffer | string }).stdout;
-		return typeof output === "string" ? output : output?.toString("utf8") ?? "";
+		return typeof output === "string" ? output : (output?.toString("utf8") ?? "");
 	}
 }
 
@@ -31,4 +31,3 @@ export async function runDiff(opts: DiffOptions): Promise<number> {
 	}
 	return 0;
 }
-

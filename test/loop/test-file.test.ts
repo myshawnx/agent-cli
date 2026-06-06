@@ -5,7 +5,15 @@ describe("test-file guard helpers", () => {
 	it("detects conventional test files and configured test dirs", () => {
 		expect(isTestFile("src/auth.test.ts")).toBe(true);
 		expect(isTestFile("tests/auth.py")).toBe(true);
-		expect(isTestFile("integration/auth.ts", { language: "typescript", packageManager: "npm", sourceDirs: [], testDirs: ["integration"], commands: {} })).toBe(true);
+		expect(
+			isTestFile("integration/auth.ts", {
+				language: "typescript",
+				packageManager: "npm",
+				sourceDirs: [],
+				testDirs: ["integration"],
+				commands: {},
+			}),
+		).toBe(true);
 		expect(isTestFile("src/auth.ts")).toBe(false);
 	});
 
@@ -21,4 +29,3 @@ describe("test-file guard helpers", () => {
 		expect(allowsTestWrites("fix implementation so tests pass")).toBe(false);
 	});
 });
-

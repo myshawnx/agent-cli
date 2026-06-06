@@ -39,7 +39,9 @@ export async function runMcp(opts: McpOptions): Promise<number> {
 
 	if (opts.action === "remove") {
 		const existed = removeMcpServer(opts.cwd, opts.name);
-		process.stdout.write(existed ? `Removed MCP server ${opts.name}.\n` : `MCP server ${opts.name} was not configured.\n`);
+		process.stdout.write(
+			existed ? `Removed MCP server ${opts.name}.\n` : `MCP server ${opts.name} was not configured.\n`,
+		);
 		return 0;
 	}
 
@@ -51,4 +53,3 @@ export async function runMcp(opts: McpOptions): Promise<number> {
 	process.stdout.write(`Configured MCP server ${opts.name} in ${mcpConfigPath(opts.cwd)}.\n`);
 	return 0;
 }
-

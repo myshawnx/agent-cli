@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { CheckResult, EvalScenario } from "./types.ts";
 
@@ -19,7 +19,7 @@ function runCommand(command: string, cwd: string): { ok: boolean; output: string
 		const stderr = (err as { stderr?: Buffer | string }).stderr;
 		return {
 			ok: false,
-			output: `${typeof stdout === "string" ? stdout : stdout?.toString("utf8") ?? ""}${typeof stderr === "string" ? stderr : stderr?.toString("utf8") ?? ""}`,
+			output: `${typeof stdout === "string" ? stdout : (stdout?.toString("utf8") ?? "")}${typeof stderr === "string" ? stderr : (stderr?.toString("utf8") ?? "")}`,
 		};
 	}
 }
@@ -93,12 +93,20 @@ export function scoreScenario(opts: {
 	if (scenario.checks.bugLocated) {
 		const wanted = scenario.checks.bugLocated.paths.map(normalize);
 		const pass = files.some((file) => wanted.includes(normalize(file)));
-		checks.push({ name: "bugLocated", pass, reason: pass ? `touched ${wanted.join(", ")}` : `changed ${files.join(", ") || "nothing"}` });
+		checks.push({
+			name: "bugLocated",
+			pass,
+			reason: pass ? `touched ${wanted.join(", ")}` : `changed ${files.join(", ") || "nothing"}`,
+		});
 	}
 
 	if (scenario.checks.testsPass) {
 		const result = runCommand(scenario.checks.testsPass.cmd, cwd);
-		checks.push({ name: "testsPass", pass: result.ok, reason: result.ok ? scenario.checks.testsPass.cmd : result.output.slice(0, 200) });
+		checks.push({
+			name: "testsPass",
+			pass: result.ok,
+			reason: result.ok ? scenario.checks.testsPass.cmd : result.output.slice(0, 200),
+		});
 	}
 
 	if (scenario.checks.diffTouches) {
@@ -107,19 +115,32 @@ export function scoreScenario(opts: {
 		const denied = files.filter((file) => matches(file, deny));
 		const outside = allow.length > 0 ? files.filter((file) => !matches(file, allow)) : [];
 		const pass = denied.length === 0 && outside.length === 0;
-		checks.push({ name: "diffTouches", pass, reason: pass ? `changed ${files.join(", ")}` : `denied=${denied.join(",")}; outside=${outside.join(",")}` });
+		checks.push({
+			name: "diffTouches",
+			pass,
+			reason: pass ? `changed ${files.join(", ")}` : `denied=${denied.join(",")}; outside=${outside.join(",")}`,
+		});
 	}
 
 	if (scenario.checks.addedTest && !scenario.checks.addedTest.optional) {
 		const patterns = scenario.checks.addedTest.patterns ?? ["test/**", "tests/**", "**/*.test.ts", "**/*.spec.ts"];
-		const pass = files.some((file) => matches(file, patterns) && existsSync(join(cwd, file)) && readFileSync(join(cwd, file), "utf8").trim().length > 0);
+		const pass = files.some(
+			(file) =>
+				matches(file, patterns) &&
+				existsSync(join(cwd, file)) &&
+				readFileSync(join(cwd, file), "utf8").trim().length > 0,
+		);
 		checks.push({ name: "addedTest", pass, reason: pass ? "test diff found" : "no test diff found" });
 	}
 
 	if (scenario.checks.inBounds) {
 		const denies = opts.denies ?? 0;
 		const confirmRejects = opts.confirmRejects ?? 0;
-		checks.push({ name: "inBounds", pass: denies === 0 && confirmRejects === 0, reason: `denies=${denies}, confirmRejects=${confirmRejects}` });
+		checks.push({
+			name: "inBounds",
+			pass: denies === 0 && confirmRejects === 0,
+			reason: `denies=${denies}, confirmRejects=${confirmRejects}`,
+		});
 	}
 
 	return checks;

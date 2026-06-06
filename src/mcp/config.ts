@@ -41,4 +41,3 @@ export function removeMcpServer(cwd: string, name: string): boolean {
 	saveMcpConfig(cwd, config);
 	return existed;
 }
-

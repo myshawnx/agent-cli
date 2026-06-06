@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import { fauxAssistantMessage, fauxToolCall } from "../pi-ai-faux.ts";
 import { type C1TestSession, createC1TestSession } from "./helpers.ts";
 
 describe("C1 readonly session", () => {

@@ -56,4 +56,3 @@ export function traceRecorder(options: TraceRecorderOptions): ExtensionFactory {
 		});
 	};
 }
-

@@ -12,7 +12,11 @@ describe("task projection", () => {
 			custom("task-meta", { goal: "fix auth", mode: "workspace-write", startedAt: "t1" }, "1"),
 			custom("task-tool-call", { tool: "read" }, "2"),
 			custom("task-modified-file", { path: "src/auth.ts" }, "3"),
-			custom("task-result", { status: "completed", endedAt: "t2", turns: 1, toolCalls: 1, modifiedFiles: ["src/auth.ts"] }, "4"),
+			custom(
+				"task-result",
+				{ status: "completed", endedAt: "t2", turns: 1, toolCalls: 1, modifiedFiles: ["src/auth.ts"] },
+				"4",
+			),
 		]);
 
 		expect(view.goal).toBe("fix auth");
@@ -20,4 +24,3 @@ describe("task projection", () => {
 		expect(view.modifiedFiles).toEqual(["src/auth.ts"]);
 	});
 });
-

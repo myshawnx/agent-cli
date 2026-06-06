@@ -1,9 +1,9 @@
 # Agent CLI 开发周期总览 + 一致性修订(规范层)
 
-> 本文是 7 份周期开发文档的**总纲**。它给出周期划分、依赖图、时间线,并把跨周期一致性评审发现的**缺口/重叠/依赖问题**收敛成一组**规范性修订**——凡本文与某周期草稿冲突处,**以本文为准**。
+> 本文是 7 份周期开发文档的**总纲**。它给出周期划分、依赖图、时间线,并把跨周期一致性评审发现的**缺口/重叠/依赖问题**收敛成一组**规范性修订**。当前仓库已进入 v1.0/C6 收口状态,下文同时记录这些规范项在代码中的落地情况。
 >
 > 周期文档:[C0](dev-cycles/C0-foundation.md) · [C1](dev-cycles/C1-readonly-shell.md) · [C2](dev-cycles/C2-safety-policy.md) · [C3](dev-cycles/C3-loop-trace-diff.md) · [C4](dev-cycles/C4-eval-harness.md) · [C5](dev-cycles/C5-mcp-adapter.md) · [C6](dev-cycles/C6-harden-release.md)
-> 源文档:[需求文档 v2](Agent-CLI-需求文档-v2.md) · [技术实现文档](Agent-CLI-技术实现文档.md)
+> 源文档:[需求文档 v2](Agent-CLI-需求文档.md) · [技术实现文档](Agent-CLI-技术实现文档.md)
 
 ---
 
@@ -17,7 +17,7 @@
 | C3 | v0.3 控制流守卫 + Task Trace + diff/undo | 9d | ★ 预算/反作弊守卫、trace 投影、resume/undo |
 | C4 | v0.4 Eval / Benchmark Harness | 7d | ★★ 度量基石(最高信号) |
 | C5 | v0.5 MCP Adapter + GitHub Demo | 9d | ★ 外部工具集成 |
-| C6 | v1.0 硬化、演示、发布 | 9d | 三支柱联调 + demo + README + 发布 |
+| C6 | v1.0 硬化、演示、发布 | 9d | 三支柱联调 + demo + README + 发布硬化 |
 
 **合计 ≈ 55 人日 ≈ 11 周(单人)。** 关键路径 C0→C1→C2→C3→C4/C6。
 
@@ -48,7 +48,9 @@ export function buildResourceLoader(
   ctx: ProjectContext,
   opts?: { extraFactories?: ExtensionFactory[] },   // ★ 新增
 ): DefaultResourceLoader;
-//   实现:extensionFactories = [policyGateway, loopGuards, traceRecorder, mcpAdapter, ...(opts?.extraFactories ?? [])]
+//   当前实现:extensionFactories =
+//   [policyGateway, loopGuards, traceRecorder, commandTimeoutBash, rememberTool,
+//    ...(mode !== "readonly" ? [mcpAdapter] : []), ...(opts?.extraFactories ?? [])]
 
 // runtime/session-factory.ts —— 允许注入 provider/model(C4 切 faux/real;默认仍 anthropic)
 export function buildSession(opts: {
@@ -56,7 +58,12 @@ export function buildSession(opts: {
   model?: Model;            // ★ 新增:缺省 getModel("anthropic", config.model)
 }): Promise<{ session: AgentSession }>;
 
-// runtime/driver.ts —— 预留 usage 订阅接缝(C3 token 软停 / C6 预算硬验证复用,避免反向改 driver)
+// 当前工具激活口径:
+// - readonly: createAgentSession({ tools: computeTools("readonly") }) 保留 pi 全局 allowlist 硬边界
+// - 非 readonly: createAgentSession({ noTools: "builtin" }) 后再 setActiveToolsByName(computeTools(mode))
+//   以免 pi 的全局 tools allowlist 过滤 session_start 动态注册的 mcp__* 工具。
+
+// runtime/driver.ts —— 预留 usage 订阅接缝(C3 token 软停 / C6 预算验证复用,避免反向改 driver)
 export function drive(session, opts: {
   printMode: boolean; prompt: string;
   onUsage?: (u: TokenUsage) => void;   // ★ 新增:print 与 interactive 都透传 session 的 usage 事件
@@ -70,7 +77,7 @@ export function drive(session, opts: {
 //   在返回 { block:true } 之前:
 pi.appendEntry("policy-deny", { tool: event.toolName, reason: v.reason });
 
-// policy/types.ts —— limits 一次性固化时就带上 commandTimeoutMs(C6 实现超时杀进程,但 schema 不再迁移)
+// policy/types.ts —— limits 一次性固化时就带上 commandTimeoutMs(C6 实现 bash 超时中止,但 schema 不再迁移)
 export interface Limits {
   maxChangedFiles: number; maxFixIterations: number; maxToolCalls: number;
   tokenBudget?: number;
@@ -90,11 +97,22 @@ export interface Limits {
 
 ### 3.4 Hook 顺序与计数边界(消除 C2/C3 重叠)
 
-- **固定扩展工厂注册顺序**:`policyGateway → loopGuards → traceRecorder → mcpAdapter`。任一返回 `{block:true}` 即短路,**首个 block 的 reason 为准**。
+- **固定扩展工厂注册顺序**:`policyGateway → loopGuards → traceRecorder → commandTimeoutBash → rememberTool → mcpAdapter(仅非 readonly) → extraFactories`。任一 `tool_call` hook 返回 `{block:true}` 即短路,**首个 block 的 reason 为准**。
 - **计数规则**:被 `policyGateway` deny 的 `tool_call`**不计入** `loopGuards` 的 `maxToolCalls` 预算(写进 C3 验收)。
-- **生命周期时序**:`mcpAdapter` 在 `session_start` 注册工具,`policyGateway/loopGuards/traceRecorder` 在 `agent_start` 清零计数。C6 的三支柱联调测试必须**同时覆盖** `session_start` 与 `agent_start` 两类事件的时序,避免错配漏判。
+- **生命周期时序**:`mcpAdapter` 在非 `readonly` 会话的 `session_start` 读取 `.agent/mcp.json`、创建持久 stdio client 并注册 `mcp__*` 工具;`policyGateway/loopGuards/traceRecorder` 在 `agent_start` / `tool_call` / `tool_result` / `agent_end` 等生命周期中工作。print 路径会显式 `session.bindExtensions({})` 以触发 `session_start`。
+- **faux provider 依赖去重**:`postinstall` 运行 `scripts/dedupe-pi-ai.mjs`,确保 headless 测试中的 `registerFauxProvider()` 与 agent loop 共享同一个顶层 `@earendil-works/pi-ai` registry;若安装时禁用 lifecycle scripts,相关 faux 集成测试可能失败。
 
-### 3.5 文档口径修正
+### 3.5 C6 当前完成状态
+
+| C6 项 | 当前状态 |
+|---|---|
+| T6.1 三支柱联调 | 已由 `test/integration/three-pillars.test.ts` 覆盖:同一 faux headless session 中同时观测 policy deny、loop guard、trace entry、MCP 动态工具注册 |
+| T6.3 command timeout | 已由 `test/integration/command-timeout.test.ts` 覆盖:真实 bash 长跑命令受 `commandTimeoutMs` 中止 |
+| T6.4 patch locate | 已由 `test/loop/guards.test.ts` 覆盖无 UI soft-stop、有 UI 确认重试/拒绝分支;端到端覆盖仍可作为后续增强 |
+| T6.5 abort failsafe | 已由 `test/integration/abort-failsafe.test.ts` 覆盖:SIGTERM 时保留 modified files、写 `abort-preserved` 和 failed `task-result` |
+| T6.6 token budget | 已由 `test/integration/token-budget.test.ts` 覆盖:usage 超过 `tokenBudget` 后 soft-stop,并在下一次 tool call 前阻断 |
+
+### 3.6 文档口径修正
 
 - `truncateTail(content, opts)` 返回 `TruncationResult`,字段是 **`.content`**(技术文档草稿里的 `.text` 是错的,C5 已更正)。C6 汇编总 README 时不要把旧写法带回。
 - `.agent/mcp.json`:由 **C5 的 `agent mcp add` 生成**(运行期),C1 的 `init` 不产出——在 C1 文档显式声明,消除「init 产出 mcp.json 骨架」悬空。
@@ -110,14 +128,14 @@ export interface Limits {
 
 ## 5. 建议执行顺序
 
-1. **先回填接缝**:按 §3.1(C1 三接缝)、§3.2(C2 两预埋)修订 C1/C2 文档与实现。
-2. **再认领缺口**:§3.3 把 review→C2、remember→C3、MCP-confirm→C6 写进对应周期。
-3. **钉死顺序**:§3.4 写进 C3/C6 验收标准。
-4. 之后按 C0→C6 顺序开发;每周期以其文档的「Definition of Done」+「周期演示」为合并门槛。
-5. C4 完成后即建立 `baseline.json`,此后每周期收尾都跑一次 `agent eval --provider faux` 防回归。
+1. C1/C2 接缝已在当前代码中落地,后续文档维护应以 `runtime/session-factory.ts`、`runtime/resource-loader.ts`、`runtime/driver.ts` 的当前实现为准。
+2. review、remember、MCP/未知工具 confirm 均已有归属与实现,不要再写成无人认领缺口。
+3. 扩展链顺序以 §3.4 为准;特别注意 MCP 仅非 `readonly` 注册。
+4. C6 收口项按 §3.5 的测试覆盖口径描述;patch locate 可注明“单测已覆盖,端到端可后续”。
+5. 回归验证继续以 `npm run lint`、`npm run test`、`agent eval --provider faux` 等命令为主。
 
 ---
 
 ## 6. 一句话
 
-7 个周期把「需求 v2 + 技术实现」拆成可独立验收、可演示的垂直切片;支柱切分清晰、与技术文档 §14 里程碑一致。**唯一的放行前条件是先回填 §3 的 5 个接口接缝与 3 个认领缺口**——做完,这套计划即可按序开工。
+7 个周期把「需求 v2 + 技术实现」拆成可独立验收、可演示的垂直切片;支柱切分清晰、与技术文档 §14 里程碑一致。当前代码已经完成关键接缝与 C6 主要硬化项,后续维护重点是保持各周期文档与 §3.4/§3.5 的当前实现口径一致。

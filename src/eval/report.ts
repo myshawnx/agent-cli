@@ -17,11 +17,23 @@ export function readBaseline(cwd: string): Record<string, boolean> | undefined {
 export function writeBaseline(cwd: string, results: EvalRunResult[]): void {
 	const path = baselinePath(cwd);
 	mkdirSync(join(cwd, ".agent", "eval"), { recursive: true });
-	writeFileSync(path, JSON.stringify(Object.fromEntries(results.map((r) => [r.scenarioId, r.pass])), null, "\t"), "utf8");
+	writeFileSync(
+		path,
+		JSON.stringify(Object.fromEntries(results.map((r) => [r.scenarioId, r.pass])), null, "\t"),
+		"utf8",
+	);
 }
 
 export function renderReport(report: EvalReport): string {
-	const lines = ["# Agent Eval", "", `Provider: ${report.provider}`, `Model: ${report.model}`, "", "| Scenario | Result | Checks | Regression |", "|---|---:|---|---|"];
+	const lines = [
+		"# Agent Eval",
+		"",
+		`Provider: ${report.provider}`,
+		`Model: ${report.model}`,
+		"",
+		"| Scenario | Result | Checks | Regression |",
+		"|---|---:|---|---|",
+	];
 	for (const result of report.results) {
 		const previous = report.baseline?.[result.scenarioId];
 		const regression = previous === true && !result.pass ? "REGRESSION" : previous === undefined ? "new" : "";
@@ -30,4 +42,3 @@ export function renderReport(report: EvalReport): string {
 	}
 	return `${lines.join("\n")}\n`;
 }
-

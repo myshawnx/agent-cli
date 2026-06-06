@@ -14,12 +14,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	type FauxProviderRegistration,
-	type FauxResponseStep,
-	fauxAssistantMessage,
-	registerFauxProvider,
-} from "@earendil-works/pi-ai";
-import {
 	AuthStorage,
 	type CreateAgentSessionResult,
 	DefaultResourceLoader,
@@ -27,6 +21,12 @@ import {
 	SettingsManager,
 	createAgentSession,
 } from "@earendil-works/pi-coding-agent";
+import {
+	type FauxProviderRegistration,
+	type FauxResponseStep,
+	fauxAssistantMessage,
+	registerFauxProvider,
+} from "./pi-ai-faux.ts";
 
 export interface TestSession {
 	session: CreateAgentSessionResult["session"];

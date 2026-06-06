@@ -1,4 +1,4 @@
-import { defineTool, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { type ExtensionFactory, defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { appendMemory } from "../context/memory.ts";
 

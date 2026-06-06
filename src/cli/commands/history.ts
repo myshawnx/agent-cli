@@ -1,4 +1,4 @@
-import { SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
+import { type SessionInfo, SessionManager } from "@earendil-works/pi-coding-agent";
 
 export interface HistoryOptions {
 	cwd: string;
@@ -10,7 +10,16 @@ function summarize(session: SessionInfo): string {
 }
 
 export async function runHistory(opts: HistoryOptions): Promise<number> {
-	const sessions = await SessionManager.list(opts.cwd);
+	let sessions: SessionInfo[];
+	try {
+		sessions = await SessionManager.list(opts.cwd);
+	} catch (err) {
+		if ((err as { code?: unknown }).code === "ENOENT") {
+			sessions = [];
+		} else {
+			throw err;
+		}
+	}
 	if (sessions.length === 0) {
 		process.stdout.write("No pi sessions found for this cwd.\n");
 		return 0;
@@ -25,4 +34,3 @@ export async function runHistory(opts: HistoryOptions): Promise<number> {
 	process.stdout.write(`${lines.join("\n")}\n`);
 	return 0;
 }
-

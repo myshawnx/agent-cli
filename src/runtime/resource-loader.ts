@@ -19,6 +19,7 @@ import { mcpAdapter } from "../mcp/adapter.ts";
 import { policyGateway } from "../policy/gateway.ts";
 import { rememberTool } from "../tools/remember.ts";
 import { traceRecorder } from "../trace/entries.ts";
+import { commandTimeoutBash } from "./bash-timeout.ts";
 
 export interface BuildResourceLoaderOptions {
 	/** Extension factories appended after policyGateway. C3/C5 inject here. */
@@ -40,7 +41,7 @@ export function buildInjectedSystemPrompt(ctx: ProjectContext): string[] {
 
 /** Extension registration order is fixed by overview §3.4: policy first. */
 export function buildExtensionFactories(ctx: ProjectContext, extraFactories?: ExtensionFactory[]): ExtensionFactory[] {
-	return [
+	const factories: ExtensionFactory[] = [
 		policyGateway(ctx.policy, ctx.mode, ctx.cwd),
 		loopGuards({
 			cwd: ctx.cwd,
@@ -48,12 +49,16 @@ export function buildExtensionFactories(ctx: ProjectContext, extraFactories?: Ex
 			profile: ctx.profile,
 			maxToolCalls: ctx.policy.limits.maxToolCalls,
 			maxFixIterations: ctx.policy.limits.maxFixIterations,
+			tokenBudget: ctx.policy.limits.tokenBudget,
 		}),
 		traceRecorder({ goal: ctx.goal, mode: ctx.mode }),
+		commandTimeoutBash(ctx.cwd, ctx.policy.limits.commandTimeoutMs),
 		rememberTool(ctx.cwd),
-		mcpAdapter(ctx.cwd),
-		...(extraFactories ?? []),
 	];
+	if (ctx.mode !== "readonly") {
+		factories.push(mcpAdapter(ctx.cwd, ctx.policy.limits.commandTimeoutMs));
+	}
+	return [...factories, ...(extraFactories ?? [])];
 }
 
 export function buildResourceLoader(ctx: ProjectContext, opts?: BuildResourceLoaderOptions): DefaultResourceLoader {

@@ -20,4 +20,3 @@ export async function runEval(opts: EvalOptions): Promise<number> {
 	}
 	return results.every((result) => result.pass) ? 0 : 1;
 }
-
